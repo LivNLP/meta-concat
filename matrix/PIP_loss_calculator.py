@@ -78,7 +78,7 @@ class MonteCarloEstimator():
         U, D, V = np.linalg.svd(X)
         U1, D1, V1 = np.linalg.svd(Y)
 
-        embed_gt = U[:,true_dims] * (D[true_dims] ** alpha)
+        embed_gt = U[:,true_dims] * (D[true_dims] ** alpha) # gt = ground truth
         sim_gt = embed_gt.dot(embed_gt.T) 
 
         spectrum = D ** alpha
@@ -128,6 +128,7 @@ class MonteCarloEstimator():
             self.estimated_pip_loss = list(map(np.sqrt, frobenius_list_est_to_gt[1:]))
         with open(os.path.join(self.param_path, "pip_loss_{}.pkl".format(self.alpha)), 'wb') as f:
             pickle.dump(self.estimated_pip_loss, f)
+        
 
 
     def plot_pip_loss(self):

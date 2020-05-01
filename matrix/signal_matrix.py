@@ -44,6 +44,8 @@ class SignalMatrix():
             plt.savefig('{}/sv.pdf'.format(self._param_dir))
             plt.close()
         self.spectrum = D
+        self.U = U
+        self.V = V
         with open("{}/sv.pkl".format(self._param_dir), "wb") as f:
             pickle.dump(self.spectrum, f)
 
