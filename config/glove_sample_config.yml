@@ -1,3 +1,5 @@
 skip_window: 5
 vocabulary_size: 10000
 min_count: 100
+alpha : 0.75
+x_max : 100
