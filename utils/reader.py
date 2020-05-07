@@ -7,10 +7,11 @@ try:
     import cPickle as pickle
 except ImportError:
     import pickle
-import tensorflow as tf
+
 
 class ZipFileReader():
     def __init__(self):
+        import tensorflow as tf
         pass
 
     def read_data(self, filename):

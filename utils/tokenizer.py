@@ -7,7 +7,7 @@ try:
     import cPickle as pickle
 except ImportError:
     import pickle
-from multiprocessing import Pool
+
 
 def _lower(s):
     return s.lower()
