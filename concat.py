@@ -161,7 +161,7 @@ def get_dimension_weighted_concat_coef(lmdas, myus, k):
 
 def process():
     settings = ["glove", "word2vec", "lsa"]
-    vocab_size = 10000
+    vocab_size = 1000
     vocab, reverse_vocab = load_data("./data/debug/vocab.1k", vocab_size)
 
     M = load_binary_matrix("./data/debug/1k_cooc.bin", vocab_size)
@@ -187,14 +187,14 @@ def process():
         sources.append(source_mat)      
         WR = WordReps()
         WR.load_matrix(source_mat, vocab)
-        df.append(evaluate_embed_matrix(WR, mode="lex"), index=[algo])
+        df = df.append(pd.DataFrame(evaluate_embed_matrix(WR, mode="lex"), index=[algo]))
     
     print("\nUnweighted concatenation...")
     weights_list = [np.ones(k[algo]) for algo in settings]
     M = concat(sources, weights_list)
     WR = WordReps()
     WR.load_matrix(M, vocab)
-    df.append(evaluate_embed_matrix(WR, mode="lex"), index=["unweighted"])
+    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR, mode="lex"), index=["unweighted"]))
 
     # source-weighted concatenation
     print("\nSource weighted concatenation...")
@@ -207,7 +207,7 @@ def process():
     M = concat(sources, weights_list)
     WR = WordReps()
     WR.load_matrix(M, vocab)
-    df.append(evaluate_embed_matrix(WR, mode="lex"), index=["source-weighted"])
+    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR, mode="lex"), index=["source-weighted"]))
 
     print("\nDimension weighted concatenation...")
     weights_list = []
@@ -219,7 +219,7 @@ def process():
     M = concat(sources, weights_list)
     WR = WordReps()
     WR.load_matrix(M, vocab)
-    df.append(evaluate_embed_matrix(WR, mode="lex"), index=["dim-weigted"])
+    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR, mode="lex"), index=["dim-weigted"]))
 
     # save and display results
     df.to_csv("result.csv")
