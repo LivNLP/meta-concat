@@ -7,16 +7,17 @@ from matrix.glove_matrix import GloVeMatrix
 from matrix.ppmi_lsa_matrix import LSAMatrix
 
 class SignalMatrixFactory():
-    def __init__(self, corpus):
-        self.corpus = corpus
+
+    def __init__(self):
+        pass
 
     def produce(self, algo):
         if algo == "word2vec":
-            return Word2VecMatrix(self.corpus)
+            return Word2VecMatrix()
         elif algo == "glove":
-            return GloVeMatrix(self.corpus)
+            return GloVeMatrix()
         elif algo == "lsa":
-            return LSAMatrix(self.corpus)
+            return LSAMatrix()
         else:
             raise NotImplementedError
 

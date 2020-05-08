@@ -12,38 +12,24 @@ from matrix.signal_matrix import SignalMatrix
 
 class LSAMatrix(SignalMatrix):
 
-    def inject_params(self, kwargs):
-        self._params = kwargs
-        if "skip_window" not in self._params:
-            self._params["skip_window"] = 5
-        self.check_params()
+    def set_params(self, vocab, reverse_vocab, M, A, B):
+        self.vocab = vocab 
+        self.reverse_vocab = reverse_vocab
+        self.M = M 
+        self.A = A 
+        self.B = B 
+        pass
 
-    def check_params(self):
-        if isinstance(self._params["skip_window"], int) and self._params["skip_window"] > 0:
-            pass
-        else:
-            raise ValueError("skip_window must be a positive integer")
+    def construct_matrix(self, cooccur):
+        return cooccur
 
-    def build_cooccurance_dict(self, data):
-        skip_window = self._params["skip_window"]
-        vocabulary_size = self.vocabulary_size
-        cooccurance_count = collections.defaultdict(collections.Counter)
-        for idx, center_word_id in enumerate(data):
-            if center_word_id > vocabulary_size:
-                vocabulary_size = center_word_id
-            for i in range(max(idx - skip_window - 1, 0), min(idx + skip_window + 1, len(data))):
-                cooccurance_count[center_word_id][data[i]] += 1
-            cooccurance_count[center_word_id][center_word_id] -= 1
-        return cooccurance_count, vocabulary_size
+    def construct_matrix_ppmi(self, cooccur):
+        vocab_size = len(self.vocab)
+        k = 1 # negative samples per positive sample.
 
-
-    def construct_matrix(self, data):
-        cooccur, vocabulary_size = self.build_cooccurance_dict(data)
-
-        Nij = np.zeros([vocabulary_size, vocabulary_size])
-        for i in range(vocabulary_size):
-            for j in range(vocabulary_size):
-                Nij[i,j] += cooccur[i][j]
+        Nij = np.zeros((vocab_size, vocab_size))
+        for (i,j,val) in cooccur:
+            Nij[i-1,j-1] = val
         Ni = np.sum(Nij, axis=1)
         tot = np.sum(Nij)
         with warnings.catch_warnings():
@@ -51,10 +37,11 @@ class LSAMatrix(SignalMatrix):
             warnings.filterwarnings("ignore")
             Pij = Nij / tot 
             Pi = Ni / np.sum(Ni)
+            # c.f.Neural Word Embedding as Implicit Matrix Factorization, Levy & Goldberg, 2014
             PMI = np.log(Pij) - np.log(np.outer(Pi, Pi))
             PMI[np.isinf(PMI)] = 0
             PMI[np.isnan(PMI)] = 0
-            PPMI = PMI
-            PPMI[PPMI < 0] = 0
-        return PPMI
+        return PMI
+
+    
 

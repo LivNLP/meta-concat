@@ -11,14 +11,14 @@ from __future__ import print_function
 
 import argparse
 import collections
-import yaml
+import scipy.sparse as sp
+import pandas as pd
+from tabulate import tabulate
 
 from matrix.signal_matrix_factory import SignalMatrixFactory
 from matrix.PIP_loss_calculator import MonteCarloEstimator
-from utils.tokenizer import SimpleTokenizer
-from utils.reader import ReaderFactory
 
-import numpy
+import numpy as np
 
 import sys
 PATH_TO_REPSEVAL = "../repseval/src"
@@ -28,7 +28,7 @@ from evaluate import evaluate_embed_matrix
 from wordreps import WordReps
 
 
-def load_data(vocab_fname, cooc_fname, cutoff):
+def load_data(vocab_fname, cutoff):
     """
     Load the vocabulary and cooccurrence marix. Only consider top cutoff frequent words
     from the vocabulary.
@@ -37,9 +37,6 @@ def load_data(vocab_fname, cooc_fname, cutoff):
     -----------
         vocab_fname : string
             name of the vocabulary file.
-        
-        cooc_fname : string
-            name of the cooccurrence matrix file.
         
         cutoff : int
             cutoff frequency threshold. Only select the top frequent words upto this limit
@@ -51,9 +48,6 @@ def load_data(vocab_fname, cooc_fname, cutoff):
         
         reverse_vocab : dict
             A dictionary mapping row indices in the cooccurrence matrix to the words.
-        
-        cooc_mat : numpy.ndarray
-            The cooccurrence matrix.
     """
     vocab = {} # word:int
     reverse_vocab = {} # int:word
@@ -65,31 +59,28 @@ def load_data(vocab_fname, cooc_fname, cutoff):
             word = line.strip().split()[0]
             vocab[word] = count
             reverse_vocab[count] = word
-    pass
+            count += 1
+    
+    return vocab, reverse_vocab
+
+def load_binary_matrix(fname, vocab_size):
+    print("Loading {0} ...".format(fname))
+    with open(fname, 'rb') as F:
+        i, j, val  = zip(*np.fromfile(F, dtype=np.dtype([('i', np.int32), ('j', np.int32), ('val', np.double)])))
+        M = sp.csr_matrix((val, (i,j)), shape=(vocab_size + 1, vocab_size + 1)).toarray()
+        return M[1:,1:]
+    raise ValueError
 
 
-
-
-def create_signal_matrix(corpus_fname, model_config, algorithm):
-    with open(model_config, "r") as f:
-        cfg = yaml.load(f)
-
-    reader = ReaderFactory.produce(corpus_fname[-3:])
-    data = reader.read_data(corpus_fname)
-    tokenizer = SimpleTokenizer()
-    indexed_corpus = tokenizer.do_index_data(data,
-        n_words=cfg.get('vocabulary_size'),
-        min_count=cfg.get('min_count'))
-
-    factory = SignalMatrixFactory(indexed_corpus)
-
+def create_signal_matrix(algorithm, vocab, reverse_vocab, M, A, B):
+    factory = SignalMatrixFactory()
     signal_matrix = factory.produce(algorithm)
+    signal_matrix.set_params(vocab, reverse_vocab, M, A, B)
     path = signal_matrix.param_dir
-    signal_matrix.inject_params(cfg)
     signal_matrix.estimate_signal()
     signal_matrix.estimate_noise()
     signal_matrix.export_estimates()
-    return cfg, path, signal_matrix, tokenizer
+    return path, signal_matrix
 
 def estimate_pip(path):
     pip_calculator = MonteCarloEstimator()
@@ -119,7 +110,7 @@ def concat(source_matrices, weights_list):
             with the same n rows and the number of columns equals the sum of source dimensionalities.
     """
     assert(len(source_matrices) == len(weights_list))
-    return numpy.concatenate([source_matrices[i] @ numpy.diag(weights_list[i]) for i in range(len(source_matrices))], axis=1)
+    return np.concatenate([source_matrices[i] @ np.diag(weights_list[i]) for i in range(len(source_matrices))], axis=1)
 
 
 def get_source_weighted_concat_coef(lmdas, myus, k):
@@ -142,7 +133,7 @@ def get_source_weighted_concat_coef(lmdas, myus, k):
     c : float
         the concatenation coefficient.
     """
-    return numpy.dot(lmdas[:k], myus[:k]) / numpy.dot(myus[:k], myus[:k])
+    return np.dot(lmdas[:k], myus[:k]) / np.dot(myus[:k], myus[:k])
 
 
 def get_dimension_weighted_concat_coef(lmdas, myus, k):
@@ -169,79 +160,84 @@ def get_dimension_weighted_concat_coef(lmdas, myus, k):
     
 
 def process():
-    #corpus_fname = "./data/text8.zip"
-    corpus_fname = sys.argv[1]
-    settings = [("glove","./config/glove_sample_config.yml"), ("word2vec", "./config/word2vec_sample_config.yml"), ("lsa", "./config/lsa_sample_config.yml")]
+    settings = ["glove", "word2vec", "lsa"]
+    vocab_size = 10000
+    vocab, reverse_vocab = load_data("./data/debug/vocab.1k", vocab_size)
 
-    cfg = {}
+    M = load_binary_matrix("./data/debug/1k_cooc.bin", vocab_size)
+    A = load_binary_matrix("./data/debug/1k_A.bin", vocab_size)
+    B = load_binary_matrix("./data/debug/1k_B.bin", vocab_size)
+
     path = {}
     signal_matrix = {}
     pip_calculator = {}
-    tokenizer = {}
 
-    for (algorithm, model_config) in settings:
-        print(algorithm, model_config, corpus_fname)
-        cfg[algorithm], path[algorithm], signal_matrix[algorithm], tokenizer[algorithm] = create_signal_matrix(corpus_fname, model_config, algorithm)
+    for algorithm in settings:
+        print(algorithm)
+        path[algorithm], signal_matrix[algorithm]= create_signal_matrix(algorithm, vocab, reverse_vocab, M, A, B)
         pip_calculator[algorithm] = estimate_pip(path[algorithm])     
-    
+
     k = {}
     sources = []
-    for algo, _ in settings:
+    df = pd.DataFrame()
+    for algo in settings:
         print(algo)
-        k[algo] = numpy.argmin(pip_calculator[algo].estimated_pip_loss)
-        source_mat = signal_matrix[algo].U[:,:k[algo]] @ numpy.diag(signal_matrix[algo].spectrum[:k[algo]])
+        k[algo] = np.argmin(pip_calculator[algo].estimated_pip_loss)
+        source_mat = signal_matrix[algo].U[:,:k[algo]] @ np.diag(signal_matrix[algo].spectrum[:k[algo]])
         sources.append(source_mat)      
         WR = WordReps()
-        WR.load_matrix(source_mat, tokenizer[algo].dictionary)
-        evaluate_embed_matrix(WR, mode="lex")
+        WR.load_matrix(source_mat, vocab)
+        df.append(evaluate_embed_matrix(WR, mode="lex"), index=[algo])
     
-    print("Unweighted concatenation...")
-    weights_list = [numpy.ones(k[algo]) for algo, _ in settings]
+    print("\nUnweighted concatenation...")
+    weights_list = [np.ones(k[algo]) for algo in settings]
     M = concat(sources, weights_list)
     WR = WordReps()
-    WR.load_matrix(M, tokenizer[algo].dictionary)
-    evaluate_embed_matrix(WR, mode="lex")
+    WR.load_matrix(M, vocab)
+    df.append(evaluate_embed_matrix(WR, mode="lex"), index=["unweighted"])
 
     # source-weighted concatenation
-    print("Source weighted concatenation...")
+    print("\nSource weighted concatenation...")
     weights_list = []
-    for algo, _ in settings:
+    for algo in settings:
         c = get_source_weighted_concat_coef(signal_matrix[algo].spectrum, 
-                                            numpy.array(pip_calculator[algo].estimated_signal), 
+                                            np.array(pip_calculator[algo].estimated_signal), 
                                            k[algo])
-        weights_list.append(c * numpy.ones(k[algo]))
+        weights_list.append(c * np.ones(k[algo]))
     M = concat(sources, weights_list)
     WR = WordReps()
-    WR.load_matrix(M, tokenizer[algo].dictionary)
-    evaluate_embed_matrix(WR, mode="lex")
+    WR.load_matrix(M, vocab)
+    df.append(evaluate_embed_matrix(WR, mode="lex"), index=["source-weighted"])
 
-    print("Dimension weighted concatenation...")
+    print("\nDimension weighted concatenation...")
     weights_list = []
-    for algo, _ in settings:
+    for algo in settings:
         c = get_dimension_weighted_concat_coef(signal_matrix[algo].spectrum, 
-                                            numpy.array(pip_calculator[algo].estimated_signal), 
+                                            np.array(pip_calculator[algo].estimated_signal), 
                                            k[algo])
         weights_list.append(c)
     M = concat(sources, weights_list)
     WR = WordReps()
-    WR.load_matrix(M, tokenizer[algo].dictionary)
-    evaluate_embed_matrix(WR, mode="lex")
+    WR.load_matrix(M, vocab)
+    df.append(evaluate_embed_matrix(WR, mode="lex"), index=["dim-weigted"])
 
-def main():
-    M = numpy.random.randn(10, 50)
-    words = []
-    eval.evaluate_embed_matrix(M, words)
-    pass
+    # save and display results
+    df.to_csv("result.csv")
+    print(tabulate(df, headers='keys', tablefmt='psql'))
 
 def test_binary():
-    with open("./data/cooccurrences.bin", "rb") as F:
-        while F:
-            inds = numpy.fromfile(F, dtype=numpy.int32, count=2)
-            count = numpy.fromfile(F, dtype=numpy.double, count=1)
-            print(inds, count)
-
+    with open("./data/secondcooc_10k.bin", "rb") as F:
+        i, j, val  = zip(*np.fromfile(F, dtype=np.dtype([('i', np.int32), ('j', np.int32), ('val', np.double)])))
+        print(len(i))
+        print(len(j))
+        print(len(val))
+        M = sp.csr_matrix((val, (i,j)), shape=(10001,10001))
+        print(M.shape)
+        print(M[23,46])
+        print(M[46,23])
+    pass
 
 
 if __name__ == "__main__":
-    #process()
-    test_binary()
+    process()
+    #test_binary()
