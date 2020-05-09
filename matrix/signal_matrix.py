@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from utils.svd import svd
+
 try:
     import cPickle as pickle
 except ImportError:
@@ -26,7 +28,11 @@ class SignalMatrix():
 
     def estimate_signal(self, enable_plot=False):
         const = self.construct_matrix(self.M)
-        U, D, V = np.linalg.svd(const)
+        
+        #U, D, V = np.linalg.svd(const)
+        #U, D, V = randomized_svd(const, n_components=9000, random_state=None)
+        U, D, V = svd(const)
+
         if enable_plot:
             plt.plot(D)
             plt.savefig('{}/sv.pdf'.format(self._param_dir))

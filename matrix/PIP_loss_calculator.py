@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from utils.svd import svd
+
 try:
     import cPickle as pickle
 except ImportError:
@@ -30,7 +32,9 @@ class MonteCarloEstimator():
         assert len(shape) == 2
         assert shape[0] >= shape[1]
         X = np.random.normal(0, 1, shape)
-        U, _, _ = np.linalg.svd(X, full_matrices = False)
+        #U, _, _ = np.linalg.svd(X, full_matrices = False)
+        #U, _, _ = randomized_svd(X, n_components=9000, random_state=None)
+        U, _, _ = svd(X, full_matrices = False)
         return U
 
 
@@ -75,8 +79,13 @@ class MonteCarloEstimator():
 
         Y = X + estimation_noise_E
 
-        U, D, V = np.linalg.svd(X)
-        U1, D1, V1 = np.linalg.svd(Y)
+        #U, D, V = np.linalg.svd(X)
+        #U, D, V = randomized_svd(X, n_components=9000, random_state=None)
+        U, D, V = svd(X)
+
+        #U1, D1, V1 = np.linalg.svd(Y)
+        #U1, D1, V1 = randomized_svd(Y, n_components=9000, random_state=None)
+        U1, D1, V1 = svd(Y)
 
         embed_gt = U[:,true_dims] * (D[true_dims] ** alpha) # gt = ground truth
         sim_gt = embed_gt.dot(embed_gt.T) 

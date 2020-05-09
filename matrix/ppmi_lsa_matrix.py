@@ -20,16 +20,11 @@ class LSAMatrix(SignalMatrix):
         self.B = B 
         pass
 
-    def construct_matrix(self, cooccur):
+    def construct_matrix_raw(self, cooccur):
         return cooccur
 
-    def construct_matrix_ppmi(self, cooccur):
+    def construct_matrix(self, Nij):
         vocab_size = len(self.vocab)
-        k = 1 # negative samples per positive sample.
-
-        Nij = np.zeros((vocab_size, vocab_size))
-        for (i,j,val) in cooccur:
-            Nij[i-1,j-1] = val
         Ni = np.sum(Nij, axis=1)
         tot = np.sum(Nij)
         with warnings.catch_warnings():
@@ -41,7 +36,9 @@ class LSAMatrix(SignalMatrix):
             PMI = np.log(Pij) - np.log(np.outer(Pi, Pi))
             PMI[np.isinf(PMI)] = 0
             PMI[np.isnan(PMI)] = 0
-        return PMI
+            PPMI = PMI
+            PPMI[PPMI < 0] = 0
+        return PPMI
 
     
 
