@@ -18,6 +18,9 @@ from matrix.PIP_loss_calculator import MonteCarloEstimator
 from utils.tokenizer import SimpleTokenizer
 from utils.reader import ReaderFactory
 
+import pandas as pd
+from tabulate import tabulate
+
 import numpy
 
 import sys
@@ -78,7 +81,7 @@ def concat(source_matrices, weights_list):
     return numpy.concatenate([source_matrices[i] @ numpy.diag(weights_list[i]) for i in range(len(source_matrices))], axis=1)
 
 
-def get_source_weighted_concat_coef(lmdas, myus, k):
+def get_source_weighted_concat_coef(lmdas, myus, k, alpha):
     """
     Compute the concatenation coefficient under source-weighted concatenation.
     
@@ -98,10 +101,10 @@ def get_source_weighted_concat_coef(lmdas, myus, k):
     c : float
         the concatenation coefficient.
     """
-    return numpy.dot(lmdas[:k], myus[:k]) / numpy.dot(myus[:k], myus[:k])
+    return numpy.dot(lmdas[:k] ** (2 * alpha), myus[:k] ** (2 * alpha)) / numpy.dot(myus[:k] ** (2 * alpha), myus[:k] ** (2 * alpha))
 
 
-def get_dimension_weighted_concat_coef(lmdas, myus, k):
+def get_dimension_weighted_concat_coef(lmdas, myus, k, alpha):
     """
     Compute the concatenation coefficient under dimension-weighted concatenation.
     
@@ -121,67 +124,116 @@ def get_dimension_weighted_concat_coef(lmdas, myus, k):
     c : numpy.array
         the concatenation coefficient.
     """
-    return lmdas[:k] / myus[:k]
+    return (lmdas[:k] ** (2 * alpha)) / (myus[:k] ** (2 * alpha))
+
+def save(fname, M):
+    with open(fname, "wb") as F:
+        numpy.save(F, M)
+    pass
     
+
+def check_vocabs(A, B):
+    """
+    Check whether vocabularies are identical.
+    """
+    assert(len(A) == len(B))
+    for word in A:
+        print(A[word])
+        assert(A[word] == B[word])
+    for word in B:
+        assert(B[word] == A[word])
+    
+    pass
+
 
 def process():
     #corpus_fname = "./data/text8.zip"
     corpus_fname = sys.argv[1]
     settings = [("glove","./config/glove_sample_config.yml"), ("word2vec", "./config/word2vec_sample_config.yml"), ("lsa", "./config/lsa_sample_config.yml")]
+    mode = "all"
 
     cfg = {}
     path = {}
     signal_matrix = {}
     pip_calculator = {}
     tokenizer = {}
+    alpha = 1
 
     for (algorithm, model_config) in settings:
         print(algorithm, model_config, corpus_fname)
         cfg[algorithm], path[algorithm], signal_matrix[algorithm], tokenizer[algorithm] = create_signal_matrix(corpus_fname, model_config, algorithm)
         pip_calculator[algorithm] = estimate_pip(path[algorithm])     
     
+    check_vocabs(tokenizer["glove"].dictionary, tokenizer["word2vec"].dictionary)
+    check_vocabs(tokenizer["glove"].dictionary, tokenizer["lsa"].dictionary)
+    check_vocabs(tokenizer["word2vec"].dictionary, tokenizer["lsa"].dictionary)
+    check_vocabs(tokenizer["glove"].reversed_dictionary, tokenizer["word2vec"].reversed_dictionary)
+    check_vocabs(tokenizer["glove"].reversed_dictionary, tokenizer["lsa"].reversed_dictionary)
+    check_vocabs(tokenizer["word2vec"].reversed_dictionary, tokenizer["lsa"].reversed_dictionary)
+
+    #save the vocabulary
+    with open("vocab", "w") as F:
+        for i in range(len(tokenizer["glove"].dictionary)):
+            print("{0} = {1}".format(tokenizer["glove"].reversed_dictionary[i], i))
+            F.write("%s\n" % tokenizer["glove"].reversed_dictionary[i])
+        
     k = {}
     sources = []
+    df = pd.DataFrame()
     for algo, _ in settings:
         print(algo)
         k[algo] = numpy.argmin(pip_calculator[algo].estimated_pip_loss)
         source_mat = signal_matrix[algo].U[:,:k[algo]] @ numpy.diag(signal_matrix[algo].spectrum[:k[algo]])
-        sources.append(source_mat)      
+        sources.append(source_mat)    
+        save("{0}.npz".format(algo), source_mat) 
         WR = WordReps()
         WR.load_matrix(source_mat, tokenizer[algo].dictionary)
-        evaluate_embed_matrix(WR, mode="lex")
+        df = df.append(pd.DataFrame(evaluate_embed_matrix(WR, mode=mode), index=[algo]))
+    
+
     
     print("Unweighted concatenation...")
     weights_list = [numpy.ones(k[algo]) for algo, _ in settings]
-    M = concat(sources, weights_list)
-    WR = WordReps()
-    WR.load_matrix(M, tokenizer[algo].dictionary)
-    evaluate_embed_matrix(WR, mode="lex")
+    M1 = concat(sources, weights_list)
+    WR1 = WordReps()
+    WR1.load_matrix(M1, tokenizer[algo].dictionary)
+    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR1, mode=mode), index=["un"]))
 
+    for alpha in [0, 0.25, 0.50, 0.75, 1.00]:
+        print("alpha = {0}".format(alpha))
+        df = batch_alpha(alpha, df, settings, sources, signal_matrix, pip_calculator, tokenizer, mode, k)    
+   
+    # save and display results
+    df.to_csv("corpus-res.csv")
+    print(tabulate(df, headers='keys', tablefmt='psql'))
+
+def batch_alpha(alpha, df, settings, sources, signal_matrix, pip_calculator, tokenizer, mode, k):
     # source-weighted concatenation
     print("Source weighted concatenation...")
     weights_list = []
     for algo, _ in settings:
         c = get_source_weighted_concat_coef(signal_matrix[algo].spectrum, 
                                             numpy.array(pip_calculator[algo].estimated_signal), 
-                                           k[algo])
+                                           k[algo], alpha)
         weights_list.append(c * numpy.ones(k[algo]))
-    M = concat(sources, weights_list)
-    WR = WordReps()
-    WR.load_matrix(M, tokenizer[algo].dictionary)
-    evaluate_embed_matrix(WR, mode="lex")
+    M2 = concat(sources, weights_list)
+    WR2 = WordReps()
+    WR2.load_matrix(M2, tokenizer[algo].dictionary)
+    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR2, mode=mode), index=["sw ({0:0.2f})".format(alpha)]))
 
     print("Dimension weighted concatenation...")
     weights_list = []
     for algo, _ in settings:
         c = get_dimension_weighted_concat_coef(signal_matrix[algo].spectrum, 
                                             numpy.array(pip_calculator[algo].estimated_signal), 
-                                           k[algo])
+                                           k[algo], alpha)
         weights_list.append(c)
-    M = concat(sources, weights_list)
-    WR = WordReps()
-    WR.load_matrix(M, tokenizer[algo].dictionary)
-    evaluate_embed_matrix(WR, mode="lex")
+    M3 = concat(sources, weights_list)
+    WR3 = WordReps()
+    WR3.load_matrix(M3, tokenizer[algo].dictionary)
+    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR3, mode=mode), index=["dw ({0:0.2f})".format(alpha)]))
+    return df
+
 
 def main():
     M = numpy.random.randn(10, 50)
