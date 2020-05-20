@@ -101,7 +101,7 @@ def get_source_weighted_concat_coef(lmdas, myus, k, alpha):
     c : float
         the concatenation coefficient.
     """
-    return numpy.dot(lmdas[:k] ** (2 * alpha), myus[:k] ** (2 * alpha)) / numpy.dot(myus[:k] ** (2 * alpha), myus[:k] ** (2 * alpha))
+    return numpy.sqrt(numpy.dot(lmdas[:k] ** (2 * alpha), myus[:k] ** (2 * alpha)) / numpy.dot(myus[:k] ** (2 * alpha), myus[:k] ** (2 * alpha)))
 
 
 def get_dimension_weighted_concat_coef(lmdas, myus, k, alpha):
@@ -124,7 +124,8 @@ def get_dimension_weighted_concat_coef(lmdas, myus, k, alpha):
     c : numpy.array
         the concatenation coefficient.
     """
-    return (lmdas[:k] ** (2 * alpha)) / (myus[:k] ** (2 * alpha))
+    #return (lmdas[:k] ** (2 * alpha)) / (myus[:k] ** (2 * alpha))  # old version
+    return (lmdas[:k] ** alpha) / (myus[:k] ** alpha)
 
 def save(fname, M):
     with open(fname, "wb") as F:
@@ -164,12 +165,12 @@ def process():
         cfg[algorithm], path[algorithm], signal_matrix[algorithm], tokenizer[algorithm] = create_signal_matrix(corpus_fname, model_config, algorithm)
         pip_calculator[algorithm] = estimate_pip(path[algorithm])     
     
-    check_vocabs(tokenizer["glove"].dictionary, tokenizer["word2vec"].dictionary)
-    check_vocabs(tokenizer["glove"].dictionary, tokenizer["lsa"].dictionary)
-    check_vocabs(tokenizer["word2vec"].dictionary, tokenizer["lsa"].dictionary)
-    check_vocabs(tokenizer["glove"].reversed_dictionary, tokenizer["word2vec"].reversed_dictionary)
-    check_vocabs(tokenizer["glove"].reversed_dictionary, tokenizer["lsa"].reversed_dictionary)
-    check_vocabs(tokenizer["word2vec"].reversed_dictionary, tokenizer["lsa"].reversed_dictionary)
+    #check_vocabs(tokenizer["glove"].dictionary, tokenizer["word2vec"].dictionary)
+    #check_vocabs(tokenizer["glove"].dictionary, tokenizer["lsa"].dictionary)
+    #check_vocabs(tokenizer["word2vec"].dictionary, tokenizer["lsa"].dictionary)
+    #check_vocabs(tokenizer["glove"].reversed_dictionary, tokenizer["word2vec"].reversed_dictionary)
+    #check_vocabs(tokenizer["glove"].reversed_dictionary, tokenizer["lsa"].reversed_dictionary)
+    #check_vocabs(tokenizer["word2vec"].reversed_dictionary, tokenizer["lsa"].reversed_dictionary)
 
     #save the vocabulary
     with open("vocab", "w") as F:
@@ -183,13 +184,13 @@ def process():
     for algo, _ in settings:
         print(algo)
         k[algo] = numpy.argmin(pip_calculator[algo].estimated_pip_loss)
+        #k[algo] = 300
         source_mat = signal_matrix[algo].U[:,:k[algo]] @ numpy.diag(signal_matrix[algo].spectrum[:k[algo]])
         sources.append(source_mat)    
         save("{0}.npz".format(algo), source_mat) 
         WR = WordReps()
         WR.load_matrix(source_mat, tokenizer[algo].dictionary)
         df = df.append(pd.DataFrame(evaluate_embed_matrix(WR, mode=mode), index=[algo]))
-    
 
     
     print("Unweighted concatenation...")
@@ -199,7 +200,7 @@ def process():
     WR1.load_matrix(M1, tokenizer[algo].dictionary)
     df = df.append(pd.DataFrame(evaluate_embed_matrix(WR1, mode=mode), index=["un"]))
 
-    for alpha in [0, 0.25, 0.50, 0.75, 1.00]:
+    for alpha in numpy.linspace(0,5,21):
         print("alpha = {0}".format(alpha))
         df = batch_alpha(alpha, df, settings, sources, signal_matrix, pip_calculator, tokenizer, mode, k)    
    

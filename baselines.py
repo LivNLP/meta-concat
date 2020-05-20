@@ -14,6 +14,7 @@ sys.path.insert(0, PATH_TO_REPSEVAL)
 from evaluate import evaluate_embed_matrix, evaluate_embeddings
 from wordreps import WordReps
 import glob
+from GlobalME import GLME
 
 def load_data(vocab_fname):
     """
@@ -67,6 +68,16 @@ def svd_baseline(df, sources, vocab, k):
     df = df.append(pd.DataFrame(res, index=["svd"]))
     return df
 
+def avg_baseline(df, sources, vocab):
+    """
+    Average the source embeddings.
+    """
+    M = np.mean(sources, axis=0)
+    WR = WordReps()
+    WR.load_matrix(M, vocab)
+    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR, mode="all"), index=["avg"]))
+    return df
+
 def write_embeds(M, fname, vocab):
     reverse_vocab = {}
     for word in vocab:
@@ -76,6 +87,24 @@ def write_embeds(M, fname, vocab):
         for i in range(M.shape[0]):
             F.write("%s %s\n" % (reverse_vocab[i], " ".join([str(x) for x in M[i,:]])))
     pass
+
+def evaluate_me(me_fname, dim):
+    """
+    Evaluates meta embeddings created by external libraries such as AE.
+    """
+    df = pd.DataFrame()
+    df = df.append(pd.DataFrame(evaluate_embeddings(me_fname, dim, mode="all"), index=["AE"]))
+    df.to_csv("baseline-res.csv")
+    print(tabulate(df, headers='keys', tablefmt='psql'))
+    pass     
+
+def globally_linear_me(sources, vocab, df, d, lr):
+    M_list, A = GLME([A.T for A in sources], d, lr)
+    WR = WordReps()
+    WR.load_matrix(A.T, vocab)
+    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR, mode="all"), index=["GLME %d %f" % (d,lr) ]))
+    return df
+
 
 def process():
     """
@@ -109,12 +138,22 @@ def process():
     #for k in range(50, 900, 50):
     #    df = svd_baseline(df, sources, vocab, k)
 
+    # avg baseline
+    #df = avg_baseline(df, sources, vocab)
+
+    # Globally Linear meta-embedding
+    for d in [100, 200, 300, 400, 500, 600, 700, 800]:
+        for lr in [0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000]:
+            df = globally_linear_me(sources, vocab, df, d, lr)
+
+
     # evaluate LLE
-    fnames = glob.glob("../LLE/work/meta-embeds/*")
-    for fname in fnames:
-        k = int(fname.split('+k=')[1])
-        ind = fname.split("/")[-1]
-        df = df.append(pd.DataFrame(evaluate_embeddings(fname, k, mode="lex"), index=[ind]))        
+    #fnames = glob.glob("../LLE-MetaEmbed/work/meta-embeds/*")
+    #for fname in fnames:
+    #    print(fname)
+    #    k = int(fname.split('+k=')[1])
+    #    ind = fname.split("/")[-1]
+    #    df = df.append(pd.DataFrame(evaluate_embeddings(fname, k, mode="all"), index=[ind]))        
 
     df.to_csv("baseline-res.csv")
     print(tabulate(df, headers='keys', tablefmt='psql'))
@@ -122,3 +161,5 @@ def process():
 
 if __name__ == "__main__":
     process()
+    #evaluate_me("../AutoencodedMetaEmbedding/aeme/work/res.txt", 300)
+
