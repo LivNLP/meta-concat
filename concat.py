@@ -208,7 +208,66 @@ def process():
     df.to_csv("corpus-res.csv")
     print(tabulate(df, headers='keys', tablefmt='psql'))
 
-def batch_alpha(alpha, df, settings, sources, signal_matrix, pip_calculator, tokenizer, mode, k):
+def pairwise_evaluation():
+    #corpus_fname = "./data/text8.zip"
+    corpus_fname = sys.argv[1]
+    settings = [("glove","./config/glove_sample_config.yml"), 
+                ("word2vec", "./config/word2vec_sample_config.yml"), 
+                ("lsa", "./config/lsa_sample_config.yml")]
+    mode = "all"
+
+    cfg = {}
+    path = {}
+    signal_matrix = {}
+    pip_calculator = {}
+    tokenizer = {}
+    alpha = 1
+
+    for (algorithm, model_config) in settings:
+        print(algorithm, model_config, corpus_fname)
+        cfg[algorithm], path[algorithm], signal_matrix[algorithm], tokenizer[algorithm] = create_signal_matrix(corpus_fname, model_config, algorithm)
+        pip_calculator[algorithm] = estimate_pip(path[algorithm])     
+
+    #save the vocabulary
+    with open("vocab", "w") as F:
+        for i in range(len(tokenizer["glove"].dictionary)):
+            print("{0} = {1}".format(tokenizer["glove"].reversed_dictionary[i], i))
+            F.write("%s\n" % tokenizer["glove"].reversed_dictionary[i])
+        
+    k = {}
+    sources = []
+    df = pd.DataFrame()
+    for algo, _ in settings:
+        print(algo)
+        k[algo] = numpy.argmin(pip_calculator[algo].estimated_pip_loss)
+        #k[algo] = 300
+        source_mat = signal_matrix[algo].U[:,:k[algo]] @ numpy.diag(signal_matrix[algo].spectrum[:k[algo]])
+        sources.append(source_mat)    
+        save("{0}.npz".format(algo), source_mat) 
+        WR = WordReps()
+        WR.load_matrix(source_mat, tokenizer[algo].dictionary)
+        df = df.append(pd.DataFrame(evaluate_embed_matrix(WR, mode=mode), index=[algo]))
+
+    pairs = [(0,1), (0,2), (1,2)]    
+    for (i,j) in pairs:
+        print("Unweighted concatenation...")
+        cur_settings = [settings[i], settings[j]]
+        prefix = settings[i][0] + "+" + settings[j][0]
+        weights_list = [numpy.ones(k[algo]) for algo, _ in cur_settings]
+        cur_sources = [sources[i], sources[j]]
+        M1 = concat(cur_sources, weights_list)
+        WR1 = WordReps()
+        WR1.load_matrix(M1, tokenizer["glove"].dictionary)
+        df = df.append(pd.DataFrame(evaluate_embed_matrix(WR1, mode=mode), index=["%s un" % prefix]))
+        df = batch_alpha(2.0, df, cur_settings, cur_sources, signal_matrix, pip_calculator, tokenizer, mode, k, prefix)
+  
+   
+    # save and display results
+    df.to_csv("corpus-res.csv")
+    print(tabulate(df, headers='keys', tablefmt='psql'))
+
+
+def batch_alpha(alpha, df, settings, sources, signal_matrix, pip_calculator, tokenizer, mode, k, prefix=None):
     # source-weighted concatenation
     print("Source weighted concatenation...")
     weights_list = []
@@ -220,7 +279,10 @@ def batch_alpha(alpha, df, settings, sources, signal_matrix, pip_calculator, tok
     M2 = concat(sources, weights_list)
     WR2 = WordReps()
     WR2.load_matrix(M2, tokenizer[algo].dictionary)
-    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR2, mode=mode), index=["sw ({0:0.2f})".format(alpha)]))
+    ind_str = "sw ({0:0.2f})".format(alpha)
+    if prefix is not None:
+        ind_str = prefix + " " + ind_str
+    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR2, mode=mode), index=[ind_str]))
 
     print("Dimension weighted concatenation...")
     weights_list = []
@@ -232,7 +294,10 @@ def batch_alpha(alpha, df, settings, sources, signal_matrix, pip_calculator, tok
     M3 = concat(sources, weights_list)
     WR3 = WordReps()
     WR3.load_matrix(M3, tokenizer[algo].dictionary)
-    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR3, mode=mode), index=["dw ({0:0.2f})".format(alpha)]))
+    ind_str = "dw ({0:0.2f})".format(alpha)
+    if prefix is not None:
+        ind_str = prefix + " " + ind_str
+    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR3, mode=mode), index=[ind_str]))
     return df
 
 
@@ -244,4 +309,5 @@ def main():
 
 if __name__ == "__main__":
     process()
+    #pairwise_evaluation()
     #main()

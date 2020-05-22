@@ -5,6 +5,9 @@ Calls/implements baseline methods for meta embedding for comparisons.
 import numpy as np 
 from sklearn.utils.extmath import randomized_svd
 
+import logging
+logging.basicConfig(filename='./tmp/baselines.log')
+
 import pandas as pd
 from tabulate import tabulate
 
@@ -50,7 +53,7 @@ def load_source(fname):
     with open(fname, "rb") as F:
         return np.load(F)
 
-def svd_baseline(df, sources, vocab, k):
+def svd_baseline(df, sources, vocab, k, prefix=""):
     """
     Concatenate all sources and apply SVD to reduce dimensionality to k.
     """
@@ -65,17 +68,20 @@ def svd_baseline(df, sources, vocab, k):
     WR.load_matrix(R, vocab)
     res = evaluate_embed_matrix(WR, mode="all")
     res["k"] = k
-    df = df.append(pd.DataFrame(res, index=["svd"]))
+    df = df.append(pd.DataFrame(res, index=[prefix + "svd"]))
     return df
 
-def avg_baseline(df, sources, vocab):
+def avg_baseline(df, sources, vocab, prefix=""):
     """
     Average the source embeddings.
     """
-    M = np.mean(sources, axis=0)
+    n_max = np.max([s.shape[1] for s in sources])
+    M = np.zeros((len(vocab), n_max))
+    for s in sources:
+        M += np.pad(s, ((0,0),(0, n_max - s.shape[1])), 'constant')
     WR = WordReps()
     WR.load_matrix(M, vocab)
-    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR, mode="all"), index=["avg"]))
+    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR, mode="all"), index=[prefix + "avg"]))
     return df
 
 def write_embeds(M, fname, vocab):
@@ -105,6 +111,11 @@ def globally_linear_me(sources, vocab, df, d, lr):
     df = df.append(pd.DataFrame(evaluate_embed_matrix(WR, mode="all"), index=["GLME %d %f" % (d,lr) ]))
     return df
 
+def evaluate_source(M, vocab, df, label):
+    WR = WordReps()
+    WR.load_matrix(M, vocab)
+    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR, mode="sent"), index=[label]))
+    return df
 
 def process():
     """
@@ -122,18 +133,17 @@ def process():
             vocab[line.strip()] = count
             count += 1
 
+    df = pd.DataFrame()
     sources = []
     for fname in source_fnames:
         source = load_source("%s/%s" % (prefix,fname))
         print(fname, source.shape)
-
-        # write the sources for LLE/AEME processing
-        write_embeds(source, fname.split(".")[0]+ ".embed", vocab)
+        #df = evaluate_source(source, vocab, df, fname.split(".npz")[0])
         sources.append(source)
-    
-    
-    df = pd.DataFrame()
+        # write the sources for LLE/AEME processing
+        #write_embeds(source, fname.split(".")[0]+ ".embed", vocab)      
 
+    df = pairwise_evaluation(df, sources, source_fnames, vocab)
     # svd-baseline
     #for k in range(50, 900, 50):
     #    df = svd_baseline(df, sources, vocab, k)
@@ -142,9 +152,9 @@ def process():
     #df = avg_baseline(df, sources, vocab)
 
     # Globally Linear meta-embedding
-    for d in [100, 200, 300, 400, 500, 600, 700, 800]:
-        for lr in [0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000]:
-            df = globally_linear_me(sources, vocab, df, d, lr)
+    #for d in [100, 200, 300, 400, 500, 600, 700, 800]:
+    #    for lr in [0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000]:
+    #        df = globally_linear_me(sources, vocab, df, d, lr)
 
 
     # evaluate LLE
@@ -158,6 +168,18 @@ def process():
     df.to_csv("baseline-res.csv")
     print(tabulate(df, headers='keys', tablefmt='psql'))
     pass
+
+def pairwise_evaluation(df, sources,source_fnames, vocab):
+    pairs = [(0,1), (0,2), (1,2)]    
+    algos = [x.split(".npz")[0] for x in source_fnames]
+    for (i,j) in pairs:
+        cur_sources = [sources[i], sources[j]]
+        prefix = " {0}+{1}".format(algos[i], algos[j])
+        print(prefix)
+        df = avg_baseline(df, cur_sources, vocab, prefix)
+        df = svd_baseline(df, sources, vocab, 450, prefix)        
+    return df
+
 
 if __name__ == "__main__":
     process()
