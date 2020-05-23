@@ -68,7 +68,7 @@ def svd_baseline(df, sources, vocab, k, prefix=""):
     WR.load_matrix(R, vocab)
     res = evaluate_embed_matrix(WR, mode="all")
     res["k"] = k
-    df = df.append(pd.DataFrame(res, index=[prefix + "svd"]))
+    df = df.append(pd.DataFrame(res, index=[prefix + "svd"]), sort=False)
     return df
 
 def avg_baseline(df, sources, vocab, prefix=""):
@@ -81,7 +81,7 @@ def avg_baseline(df, sources, vocab, prefix=""):
         M += np.pad(s, ((0,0),(0, n_max - s.shape[1])), 'constant')
     WR = WordReps()
     WR.load_matrix(M, vocab)
-    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR, mode="all"), index=[prefix + "avg"]))
+    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR, mode="all"), index=[prefix + "avg"]), sort=False)
     return df
 
 def write_embeds(M, fname, vocab):
@@ -143,13 +143,13 @@ def process():
         # write the sources for LLE/AEME processing
         #write_embeds(source, fname.split(".")[0]+ ".embed", vocab)      
 
-    df = pairwise_evaluation(df, sources, source_fnames, vocab)
+    #df = pairwise_evaluation(df, sources, source_fnames, vocab)
     # svd-baseline
-    #for k in range(50, 900, 50):
-    #    df = svd_baseline(df, sources, vocab, k)
+    for k in range(50, 900, 50):
+        df = svd_baseline(df, sources, vocab, k)
 
     # avg baseline
-    #df = avg_baseline(df, sources, vocab)
+    df = avg_baseline(df, sources, vocab)
 
     # Globally Linear meta-embedding
     #for d in [100, 200, 300, 400, 500, 600, 700, 800]:
