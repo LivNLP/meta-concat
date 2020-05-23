@@ -60,14 +60,33 @@ def load_data(vocab_fname):
     
     return vocab, reverse_vocab
 
+# def load_binary_matrix(fname, vocab_size):
+#     print("Loading {0} ...".format(fname))
+#     with open(fname, 'rb') as F:
+#         i, j, val  = zip(*np.fromfile(F, dtype=np.dtype([('i', np.int32), ('j', np.int32), ('val', np.double)])))
+#         M = sp.csr_matrix((val, (i,j)), shape=(vocab_size + 1, vocab_size + 1)).toarray()
+#         return M[1:,1:]
+#     raise ValueError
+
 def load_binary_matrix(fname, vocab_size):
     print("Loading {0} ...".format(fname))
     with open(fname, 'rb') as F:
-        i, j, val  = zip(*np.fromfile(F, dtype=np.dtype([('i', np.int32), ('j', np.int32), ('val', np.double)])))
-        M = sp.csr_matrix((val, (i,j)), shape=(vocab_size + 1, vocab_size + 1)).toarray()
-        return M[1:,1:]
+        L = np.fromfile(F, dtype=np.dtype([('i', np.int32), ('j', np.int32), ('val', np.double)]))
+        M = np.zeros((vocab_size, 1000))
+        for (i,j,val) in L:
+            if j < 1001:
+                print(i, end='\r')
+                M[i-1,j-1] = val
+        return M
     raise ValueError
 
+def convert(in_fname, out_fname, vocab_size):
+    print("Loading {0} ...".format(in_fname))
+    M = load_binary_matrix(in_fname, vocab_size)
+    print ("Saving to {0}".format(out_fname))
+    with open(out_fname, "rb") as out_file:
+        np.save(out_file, M)
+    pass
 
 def create_signal_matrix(algorithm, vocab, reverse_vocab, M, A, B):
     factory = SignalMatrixFactory()
@@ -154,19 +173,38 @@ def get_dimension_weighted_concat_coef(lmdas, myus, k):
         the concatenation coefficient.
     """
     return lmdas[:k] / myus[:k]
-    
+
+def save(fname, M):
+    with open(fname, "wb") as F:
+        np.save(F, M)
+    pass
+
+def load(fname):
+    with open(fname, "rb") as F:
+        return np.load(F)
+    return ValueError    
 
 def process():
     settings = ["glove", "word2vec", "lsa"]
+    mode = "all"
 
     with open(sys.argv[1]) as cfg_file:
         cfg = yaml.load(cfg_file)
     vocab_size = cfg["vocab_size"]
     vocab, reverse_vocab = load_data(cfg["vocab"])
 
-    M = load_binary_matrix(cfg["M_fname"], vocab_size)
-    A = load_binary_matrix(cfg["A_fname"], vocab_size)
-    B = load_binary_matrix(cfg["B_fname"], vocab_size)
+    #M = load_binary_matrix(cfg["M_fname"], vocab_size)
+    #A = load_binary_matrix(cfg["A_fname"], vocab_size)
+    #B = load_binary_matrix(cfg["B_fname"], vocab_size)
+
+    M = load(cfg["M_fname"] + ".npz")
+    A = load(cfg["A_fname"] + ".npz")
+    B = load(cfg["B_fname"] + ".npz")    
+
+    #save(cfg["M_fname"] + ".npz", M)
+    #save(cfg["A_fname"] + ".npz", A)
+    #save(cfg["B_fname"] + ".npz", B)
+
 
     path = {}
     signal_matrix = {}
@@ -188,14 +226,14 @@ def process():
         sources.append(source_mat)      
         WR = WordReps()
         WR.load_matrix(source_mat, vocab)
-        df = df.append(pd.DataFrame(evaluate_embed_matrix(WR, mode="lex"), index=[algo]))
+        df = df.append(pd.DataFrame(evaluate_embed_matrix(WR, mode=mode), index=[algo]))
     
     print("\nUnweighted concatenation...")
     weights_list = [np.ones(k[algo]) for algo in settings]
     M1 = concat(sources, weights_list)
     WR1 = WordReps()
     WR1.load_matrix(M1, vocab)
-    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR1, mode="lex"), index=["unweighted"]))
+    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR1, mode=mode), index=["unweighted"]))
 
     # source-weighted concatenation
     print("\nSource weighted concatenation...")
@@ -208,7 +246,7 @@ def process():
     M2 = concat(sources, weights_list)
     WR2 = WordReps()
     WR2.load_matrix(M2, vocab)
-    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR2, mode="lex"), index=["source-weighted"]))
+    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR2, mode=mode), index=["source-weighted"]))
 
     print("\nDimension weighted concatenation...")
     weights_list = []
@@ -220,7 +258,7 @@ def process():
     M3 = concat(sources, weights_list)
     WR3 = WordReps()
     WR3.load_matrix(M3, vocab)
-    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR3, mode="lex"), index=["dim-weigted"]))
+    df = df.append(pd.DataFrame(evaluate_embed_matrix(WR3, mode=mode), index=["dim-weigted"]))
 
     # save and display results
     df.to_csv(cfg["res_fname"])
@@ -237,6 +275,9 @@ def test_binary():
         print(M[23,46])
         print(M[46,23])
     pass
+
+def test():
+    S = Sem
 
 
 if __name__ == "__main__":

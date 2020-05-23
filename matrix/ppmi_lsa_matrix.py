@@ -26,14 +26,16 @@ class LSAMatrix(SignalMatrix):
     def construct_matrix(self, Nij):
         vocab_size = len(self.vocab)
         Ni = np.sum(Nij, axis=1)
+        Nj = np.sum(Nij, axis=0)
         tot = np.sum(Nij)
         with warnings.catch_warnings():
             """log(0) is going to throw warnings, but we will deal with it."""
             warnings.filterwarnings("ignore")
             Pij = Nij / tot 
             Pi = Ni / np.sum(Ni)
+            Pj = Nj / np.sum(Nj)
             # c.f.Neural Word Embedding as Implicit Matrix Factorization, Levy & Goldberg, 2014
-            PMI = np.log(Pij) - np.log(np.outer(Pi, Pi))
+            PMI = np.log(Pij) - np.log(np.outer(Pi, Pj))
             PMI[np.isinf(PMI)] = 0
             PMI[np.isnan(PMI)] = 0
             PPMI = PMI
