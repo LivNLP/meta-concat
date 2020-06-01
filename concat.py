@@ -1,8 +1,5 @@
 """
 This file implements the PIP-loss-based concatenated meta-embedding method.
-
-Danushka Bollegala
-1st May 2020
 """
 
 from __future__ import absolute_import
