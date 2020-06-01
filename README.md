@@ -1,6 +1,29 @@
-# PIP-concat
-Creates meta embedding via unsupervised PIP loss minimisation
+# Meta-embedding by weighted concatenating source embedding
+This project implements the meta-embedding method where source embeddings are weighted prior to concatenating row-wise. 
+The concatenation weights are learnt such that the pairwise inner-product (PIP) loss is minimised according bias and variance terms, that
+involve the spectra of the ideal meta-embedding signal matrix and signal matrices for the individual source embeddings.
 
-This branch hold the code base for creating co-occurrence matrices directly from a given text corpus. However, for larger corpora 
-or for vocabularies (greater than 15K) you will run into memory issues with this branch and it is better to use the cooc branch for
-loading pre-computed co-occurrences matrices in that case.
+## Requirements
+- Python 3
+- PyTorch
+- tabulate
+- pandas
+- [repseval](https://github.com/Bollegala/repseval)
+- [senteval](https://github.com/facebookresearch/SentEval)
+
+## Reproducing results
+To compute the dimension-weighted and source-weighted meta-embeddings do the following, where corpus_file is a tokenised text file
+from which we will be computing the signal matrices for the source embeddings, output_file is a file to which we will be writing
+various performance metrics and alpha (in range [0,1]) is the parameter that magnifies the singular values during decomposition
+(see paper for further details)
+```
+    python concat.py corpus_file output_file alpha
+```
+
+If you want to reproduce the results for baseline methods (SVD, AVG) and previously proposed meta-embedding learning methods (LLE and 1toN),
+then use the baselines.py as follows.
+```
+    python baselines.py
+```
+
+
