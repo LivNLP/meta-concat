@@ -53,6 +53,20 @@ def load_source(fname):
     with open(fname, "rb") as F:
         return np.load(F)
 
+def concat_baseline(df, sources, vocab, prefix=""):
+    """
+    Unweighted conctenation.
+    """
+    norm_sources = []
+    for x in sources:
+        norm_sources.append(np.divide(x.T, np.linalg.norm(x, axis=1)).T)
+    M = np.concatenate(norm_sources, axis=1)
+    WR = WordReps()
+    WR.load_matrix(M, vocab)
+    res = evaluate_embed_matrix(WR, mode="all")
+    df = df.append(pd.DataFrame(res, index=[prefix + "UW"]), sort=False)
+    return df
+
 def svd_baseline(df, sources, vocab, k, prefix=""):
     """
     Concatenate all sources and apply SVD to reduce dimensionality to k.
@@ -94,10 +108,16 @@ def write_embeds(M, fname, vocab):
             F.write("%s %s\n" % (reverse_vocab[i], " ".join([str(x) for x in M[i,:]])))
     pass
 
-def evaluate_me(me_fname, dim):
+def guess_dim(fname):
+    with open(fname) as F:
+        l = F.readline().split()
+    return len(l) - 1
+
+def evaluate_me(me_fname):
     """
     Evaluates meta embeddings created by external libraries such as AE.
     """
+    dim = guess_dim(me_fname)
     df = pd.DataFrame()
     df = df.append(pd.DataFrame(evaluate_embeddings(me_fname, dim, mode="all"), index=["AE"]))
     df.to_csv("baseline-res.csv")
@@ -145,17 +165,20 @@ def process():
 
     #df = pairwise_evaluation(df, sources, source_fnames, vocab)
     # svd-baseline
-    for k in range(50, 900, 50):
-        df = svd_baseline(df, sources, vocab, k)
+    #for k in range(50, 900, 50):
+    #    df = svd_baseline(df, sources, vocab, k)
+    #df = svd_baseline(df, sources, vocab, 50)
+    #df = svd_baseline(df, sources, vocab, 100)
+    #df = concat_baseline(df, sources, vocab)
 
     # avg baseline
-    df = avg_baseline(df, sources, vocab)
+    #df = avg_baseline(df, sources, vocab)
 
-    # Globally Linear meta-embedding
+    ## Globally Linear meta-embedding
     #for d in [100, 200, 300, 400, 500, 600, 700, 800]:
     #    for lr in [0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000]:
     #        df = globally_linear_me(sources, vocab, df, d, lr)
-
+    df = globally_linear_me(sources, vocab, df, 300, 0.01)
 
     # evaluate LLE
     #fnames = glob.glob("../LLE-MetaEmbed/work/meta-embeds/*")
@@ -163,7 +186,17 @@ def process():
     #    print(fname)
     #    k = int(fname.split('+k=')[1])
     #    ind = fname.split("/")[-1]
-    #    df = df.append(pd.DataFrame(evaluate_embeddings(fname, k, mode="all"), index=[ind]))        
+    #    df = df.append(pd.DataFrame(evaluate_embeddings(fname, k, mode="all"), index=[ind]))   
+
+    # evaluate AE
+    #fnames = glob.glob("./data/source_embeddings/text8/AE/*")
+    #for fname in fnames:
+    #    ind = fname.split('/')[-1].split(".")[0]
+    #    print(ind)
+    #    dim = guess_dim(fname)
+    #    df = df.append(pd.DataFrame(evaluate_embeddings(fname, dim, mode="all"), index=[ind])) 
+
+    #df = df.append(pd.DataFrame(evaluate_embeddings(fname, k, mode="all"), index=[ind]))         
 
     df.to_csv("baseline-res.csv")
     print(tabulate(df, headers='keys', tablefmt='psql'))
@@ -183,5 +216,5 @@ def pairwise_evaluation(df, sources,source_fnames, vocab):
 
 if __name__ == "__main__":
     process()
-    #evaluate_me("../AutoencodedMetaEmbedding/aeme/work/res.txt", 300)
+    #evaluate_me("./data/source_embeddings/text8/AE/AAEME+glove+SGNS.embed")
 

@@ -29,7 +29,7 @@ sys.path.insert(0, PATH_TO_REPSEVAL)
 from evaluate import evaluate_embed_matrix
 from wordreps import WordReps
 
-def create_signal_matrix(corpus_fname, model_config, algorithm):
+def create_signal_matrix(corpus_fname, model_config, algorithm, alpha):
     with open(model_config, "r") as f:
         cfg = yaml.load(f)
 
@@ -45,9 +45,9 @@ def create_signal_matrix(corpus_fname, model_config, algorithm):
     signal_matrix = factory.produce(algorithm)
     path = signal_matrix.param_dir
     signal_matrix.inject_params(cfg)
-    signal_matrix.estimate_signal()
+    signal_matrix.estimate_signal(enable_plot=False) # plot the singular values
     signal_matrix.estimate_noise()
-    signal_matrix.export_estimates()
+    signal_matrix.export_estimates(alpha)
     return cfg, path, signal_matrix, tokenizer
 
 def estimate_pip(path):
@@ -55,7 +55,7 @@ def estimate_pip(path):
     pip_calculator.get_param_file(path, "estimates.yml")
     pip_calculator.estimate_signal()
     pip_calculator.estimate_pip_loss()
-    pip_calculator.plot_pip_loss()
+    #pip_calculator.plot_pip_loss()
     return pip_calculator    
 
 def concat(source_matrices, weights_list):
@@ -81,7 +81,7 @@ def concat(source_matrices, weights_list):
     return numpy.concatenate([source_matrices[i] @ numpy.diag(weights_list[i]) for i in range(len(source_matrices))], axis=1)
 
 
-def get_source_weighted_concat_coef(lmdas, myus, k, alpha):
+def get_source_weighted_concat_coef(lmdas, myus, k, alpha, start_ind):
     """
     Compute the concatenation coefficient under source-weighted concatenation.
     
@@ -95,16 +95,21 @@ def get_source_weighted_concat_coef(lmdas, myus, k, alpha):
         
     k : int
         rank of the embedding matrix.
+    
+     start_ind : int
+        start index of the lambda spectrum.
         
     Returns
     --------
     c : float
         the concatenation coefficient.
     """
-    return numpy.sqrt(numpy.dot(lmdas[:k] ** (2 * alpha), myus[:k] ** (2 * alpha)) / numpy.dot(myus[:k] ** (2 * alpha), myus[:k] ** (2 * alpha)))
+    w = numpy.sqrt(numpy.dot(lmdas[start_ind : start_ind + k] ** (2 * alpha), myus[:k] ** (2 * alpha)) / numpy.dot(myus[:k] ** (2 * alpha), myus[:k] ** (2 * alpha)))
+    #w = w / numpy.sum(w)
+    return w
 
 
-def get_dimension_weighted_concat_coef(lmdas, myus, k, alpha):
+def get_dimension_weighted_concat_coef(lmdas, myus, k, alpha, start_ind):
     """
     Compute the concatenation coefficient under dimension-weighted concatenation.
     
@@ -118,6 +123,12 @@ def get_dimension_weighted_concat_coef(lmdas, myus, k, alpha):
         
     k : int
         rank of the embedding matrix.
+    
+    alpha : float
+        alpha value for the source embedding.
+
+    start_ind : int
+        start index of the lambda spectrum.
         
     Returns
     --------
@@ -125,7 +136,9 @@ def get_dimension_weighted_concat_coef(lmdas, myus, k, alpha):
         the concatenation coefficient.
     """
     #return (lmdas[:k] ** (2 * alpha)) / (myus[:k] ** (2 * alpha))  # old version
-    return (lmdas[:k] ** alpha) / (myus[:k] ** alpha)
+    w = (lmdas[start_ind : start_ind + k] ** alpha) / (myus[:k] ** alpha)
+    #w = w / numpy.sum(w)
+    return w
 
 def save(fname, M):
     with open(fname, "wb") as F:
@@ -147,22 +160,35 @@ def check_vocabs(A, B):
     pass
 
 
-def process():
-    #corpus_fname = "./data/text8.zip"
+def batch_process():
+    """
+    Calls process with different alphas.
+    """
+    corpus_fname = "./data/text8"
+    for alpha in [0.75]:
+        output_fname = "alpha={0}-res.csv".format(alpha)
+        process(corpus_fname=corpus_fname, output_fname=output_fname, alpha=alpha)
+    pass
+
+def process(corpus_fname="", output_fname="", alpha=0):
     corpus_fname = sys.argv[1]
+    output_fname = sys.argv[2]
+    alpha = float(sys.argv[3])
+
+    print(corpus_fname, output_fname, alpha)
     settings = [("glove","./config/glove_sample_config.yml"), ("word2vec", "./config/word2vec_sample_config.yml"), ("lsa", "./config/lsa_sample_config.yml")]
-    mode = "all"
+    mode = "lex"
 
     cfg = {}
     path = {}
     signal_matrix = {}
     pip_calculator = {}
     tokenizer = {}
-    alpha = 1
+    #alpha = 0.5 # symmetric factorization
 
     for (algorithm, model_config) in settings:
         print(algorithm, model_config, corpus_fname)
-        cfg[algorithm], path[algorithm], signal_matrix[algorithm], tokenizer[algorithm] = create_signal_matrix(corpus_fname, model_config, algorithm)
+        cfg[algorithm], path[algorithm], signal_matrix[algorithm], tokenizer[algorithm] = create_signal_matrix(corpus_fname, model_config, algorithm, alpha)
         pip_calculator[algorithm] = estimate_pip(path[algorithm])     
     
     #check_vocabs(tokenizer["glove"].dictionary, tokenizer["word2vec"].dictionary)
@@ -173,10 +199,10 @@ def process():
     #check_vocabs(tokenizer["word2vec"].reversed_dictionary, tokenizer["lsa"].reversed_dictionary)
 
     #save the vocabulary
-    with open("vocab", "w") as F:
-        for i in range(len(tokenizer["glove"].dictionary)):
-            print("{0} = {1}".format(tokenizer["glove"].reversed_dictionary[i], i))
-            F.write("%s\n" % tokenizer["glove"].reversed_dictionary[i])
+    #with open("vocab", "w") as F:
+    #    for i in range(len(tokenizer["glove"].dictionary)):
+    #        print("{0} = {1}".format(tokenizer["glove"].reversed_dictionary[i], i))
+    #       F.write("%s\n" % tokenizer["glove"].reversed_dictionary[i])
         
     k = {}
     sources = []
@@ -184,14 +210,13 @@ def process():
     for algo, _ in settings:
         print(algo)
         k[algo] = numpy.argmin(pip_calculator[algo].estimated_pip_loss)
-        #k[algo] = 300
-        source_mat = signal_matrix[algo].U[:,:k[algo]] @ numpy.diag(signal_matrix[algo].spectrum[:k[algo]])
+        source_mat = signal_matrix[algo].U[:,:k[algo]] @ (numpy.diag(signal_matrix[algo].spectrum[:k[algo]] ** alpha))
         sources.append(source_mat)    
         save("{0}.npz".format(algo), source_mat) 
         WR = WordReps()
         WR.load_matrix(source_mat, tokenizer[algo].dictionary)
         df = df.append(pd.DataFrame(evaluate_embed_matrix(WR, mode=mode), index=[algo]))
-
+        WR.save_model("%s.embed" % algo)
     
     print("Unweighted concatenation...")
     weights_list = [numpy.ones(k[algo]) for algo, _ in settings]
@@ -199,18 +224,21 @@ def process():
     WR1 = WordReps()
     WR1.load_matrix(M1, tokenizer[algo].dictionary)
     df = df.append(pd.DataFrame(evaluate_embed_matrix(WR1, mode=mode), index=["un"]))
+    WR1.save_model("uw.embeds")
 
-    for alpha in numpy.linspace(0,5,21):
-        print("alpha = {0}".format(alpha))
-        df = batch_alpha(alpha, df, settings, sources, signal_matrix, pip_calculator, tokenizer, mode, k)    
+    #for alpha in numpy.linspace(0,5,21):
+    #    print("alpha = {0}".format(alpha))
+    #    df = batch_alpha(alpha, df, settings, sources, signal_matrix, pip_calculator, tokenizer, mode, k)  
+    df = batch_alpha(alpha, df, settings, sources, signal_matrix, pip_calculator, tokenizer, mode, k)    
    
     # save and display results
-    df.to_csv("corpus-res.csv")
+    df.to_csv(output_fname)
     print(tabulate(df, headers='keys', tablefmt='psql'))
 
 def pairwise_evaluation():
     #corpus_fname = "./data/text8.zip"
     corpus_fname = sys.argv[1]
+
     settings = [("glove","./config/glove_sample_config.yml"), 
                 ("word2vec", "./config/word2vec_sample_config.yml"), 
                 ("lsa", "./config/lsa_sample_config.yml")]
@@ -221,19 +249,13 @@ def pairwise_evaluation():
     signal_matrix = {}
     pip_calculator = {}
     tokenizer = {}
-    alpha = 1
+    alpha = 0.5
 
     for (algorithm, model_config) in settings:
         print(algorithm, model_config, corpus_fname)
-        cfg[algorithm], path[algorithm], signal_matrix[algorithm], tokenizer[algorithm] = create_signal_matrix(corpus_fname, model_config, algorithm)
+        cfg[algorithm], path[algorithm], signal_matrix[algorithm], tokenizer[algorithm] = create_signal_matrix(corpus_fname, model_config, algorithm, alpha)
         pip_calculator[algorithm] = estimate_pip(path[algorithm])     
 
-    #save the vocabulary
-    with open("vocab", "w") as F:
-        for i in range(len(tokenizer["glove"].dictionary)):
-            print("{0} = {1}".format(tokenizer["glove"].reversed_dictionary[i], i))
-            F.write("%s\n" % tokenizer["glove"].reversed_dictionary[i])
-        
     k = {}
     sources = []
     df = pd.DataFrame()
@@ -241,12 +263,16 @@ def pairwise_evaluation():
         print(algo)
         k[algo] = numpy.argmin(pip_calculator[algo].estimated_pip_loss)
         #k[algo] = 300
-        source_mat = signal_matrix[algo].U[:,:k[algo]] @ numpy.diag(signal_matrix[algo].spectrum[:k[algo]])
+        source_mat = signal_matrix[algo].U[:,:k[algo]] @ numpy.diag(signal_matrix[algo].spectrum[:k[algo]] ** alpha)
         sources.append(source_mat)    
-        save("{0}.npz".format(algo), source_mat) 
+        #save("{0}.npz".format(algo), source_mat) 
         WR = WordReps()
         WR.load_matrix(source_mat, tokenizer[algo].dictionary)
         df = df.append(pd.DataFrame(evaluate_embed_matrix(WR, mode=mode), index=[algo]))
+    
+    # uncomment the following loop if you do not want to l2 normalise the sources
+    for j in range(len(sources)):
+        sources[j] = numpy.divide(sources[j].T, numpy.linalg.norm(sources[j], axis=1)).T 
 
     pairs = [(0,1), (0,2), (1,2)]    
     for (i,j) in pairs:
@@ -259,7 +285,7 @@ def pairwise_evaluation():
         WR1 = WordReps()
         WR1.load_matrix(M1, tokenizer["glove"].dictionary)
         df = df.append(pd.DataFrame(evaluate_embed_matrix(WR1, mode=mode), index=["%s un" % prefix]))
-        df = batch_alpha(2.0, df, cur_settings, cur_sources, signal_matrix, pip_calculator, tokenizer, mode, k, prefix)
+        df = batch_alpha(alpha, df, cur_settings, cur_sources, signal_matrix, pip_calculator, tokenizer, mode, k, prefix)
   
    
     # save and display results
@@ -271,11 +297,15 @@ def batch_alpha(alpha, df, settings, sources, signal_matrix, pip_calculator, tok
     # source-weighted concatenation
     print("Source weighted concatenation...")
     weights_list = []
+    start_ind = 0
+
     for algo, _ in settings:
         c = get_source_weighted_concat_coef(signal_matrix[algo].spectrum, 
                                             numpy.array(pip_calculator[algo].estimated_signal), 
-                                           k[algo], alpha)
+                                           k[algo], alpha, start_ind)
         weights_list.append(c * numpy.ones(k[algo]))
+        start_ind += k[algo]
+
     M2 = concat(sources, weights_list)
     WR2 = WordReps()
     WR2.load_matrix(M2, tokenizer[algo].dictionary)
@@ -283,14 +313,17 @@ def batch_alpha(alpha, df, settings, sources, signal_matrix, pip_calculator, tok
     if prefix is not None:
         ind_str = prefix + " " + ind_str
     df = df.append(pd.DataFrame(evaluate_embed_matrix(WR2, mode=mode), index=[ind_str]))
+    WR2.save_model("sw.embeds")
 
     print("Dimension weighted concatenation...")
     weights_list = []
+    start_ind = 0
     for algo, _ in settings:
         c = get_dimension_weighted_concat_coef(signal_matrix[algo].spectrum, 
                                             numpy.array(pip_calculator[algo].estimated_signal), 
-                                           k[algo], alpha)
+                                           k[algo], alpha, start_ind)
         weights_list.append(c)
+        start_ind += k[algo]
     M3 = concat(sources, weights_list)
     WR3 = WordReps()
     WR3.load_matrix(M3, tokenizer[algo].dictionary)
@@ -298,6 +331,7 @@ def batch_alpha(alpha, df, settings, sources, signal_matrix, pip_calculator, tok
     if prefix is not None:
         ind_str = prefix + " " + ind_str
     df = df.append(pd.DataFrame(evaluate_embed_matrix(WR3, mode=mode), index=[ind_str]))
+    WR3.save_model("dw.embeds")
     return df
 
 
@@ -309,5 +343,6 @@ def main():
 
 if __name__ == "__main__":
     process()
+    #batch_process()
     #pairwise_evaluation()
     #main()
