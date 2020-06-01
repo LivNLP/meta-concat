@@ -6,10 +6,13 @@ involve the spectra of the ideal meta-embedding signal matrix and signal matrice
 ## Requirements
 - Python 3
 - PyTorch
-- tabulate
+- [tabulate](https://pypi.org/project/tabulate/)
 - pandas
+- [PyYAML](https://pyyaml.org/wiki/PyYAMLDocumentation)
 - [repseval](https://github.com/Bollegala/repseval)
 - [senteval](https://github.com/facebookresearch/SentEval)
+
+Make sure that you specify the install paths of repseval and senteval.
 
 ## Reproducing results
 To compute the dimension-weighted and source-weighted meta-embeddings do the following, where corpus_file is a tokenised text file
