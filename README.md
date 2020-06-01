@@ -1,4 +1,4 @@
-# Meta-embedding by weighted concatenating source embedding
+# Meta-embedding by weighted concatenation of sources
 This project implements the meta-embedding method where source embeddings are weighted prior to concatenating row-wise. 
 The concatenation weights are learnt such that the pairwise inner-product (PIP) loss is minimised according bias and variance terms, that
 involve the spectra of the ideal meta-embedding signal matrix and signal matrices for the individual source embeddings.
