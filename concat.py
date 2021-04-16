@@ -28,7 +28,7 @@ from wordreps import WordReps
 
 def create_signal_matrix(corpus_fname, model_config, algorithm, alpha):
     with open(model_config, "r") as f:
-        cfg = yaml.load(f)
+        cfg = yaml.load(f, Loader=yaml.FullLoader)
 
     reader = ReaderFactory.produce(corpus_fname[-3:])
     data = reader.read_data(corpus_fname)
@@ -101,7 +101,11 @@ def get_source_weighted_concat_coef(lmdas, myus, k, alpha, start_ind):
     c : float
         the concatenation coefficient.
     """
-    w = numpy.sqrt(numpy.dot(lmdas[start_ind : start_ind + k] ** (2 * alpha), myus[:k] ** (2 * alpha)) / numpy.dot(myus[:k] ** (2 * alpha), myus[:k] ** (2 * alpha)))
+    # w = numpy.sqrt(numpy.dot(lmdas[start_ind : start_ind + k] ** (2 * alpha), myus[:k] ** (2 * alpha)) / numpy.dot(myus[:k] ** (2 * alpha), myus[:k] ** (2 * alpha))) # old version
+    
+    upper = numpy.sum(lmdas[start_ind:start_ind+k] ** (2 * alpha))
+    lower = numpy.sum(myus[:k] ** (4 * alpha))
+    w = numpy.power(upper / lower, 1.0 / 3.0)
     #w = w / numpy.sum(w)
     return w
 
@@ -133,7 +137,7 @@ def get_dimension_weighted_concat_coef(lmdas, myus, k, alpha, start_ind):
         the concatenation coefficient.
     """
     #return (lmdas[:k] ** (2 * alpha)) / (myus[:k] ** (2 * alpha))  # old version
-    w = (lmdas[start_ind : start_ind + k] ** alpha) / (myus[:k] ** alpha)
+    w = numpy.power(lmdas[start_ind : start_ind + k] ** (2 * alpha) / myus[:k] ** (4 * alpha), 1.0 / 3.0)
     #w = w / numpy.sum(w)
     return w
 
