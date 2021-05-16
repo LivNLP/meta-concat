@@ -37,7 +37,7 @@ class MonteCarloEstimator():
     def get_param_file(self, param_path, filename):
         param_file = os.path.join(param_path, filename)
         with open(param_file, "rb") as f:
-            cfg = yaml.load(f)
+            cfg = yaml.load(f, Loader=yaml.FullLoader)
         self.param_path = param_path
         self.alpha = float(cfg["alpha"])
         self.estimated_sigma = float(cfg["sigma"])

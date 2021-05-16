@@ -7,7 +7,7 @@ try:
     import cPickle as pickle
 except ImportError:
     import pickle
-from multiprocessing import Pool
+#from multiprocessing import Pool
 
 def _lower(s):
     return s.lower()
@@ -20,8 +20,10 @@ class SimpleTokenizer():
         """data: str"""
         data = data.replace('\n', ' ').replace('\r', '')
         splitted = data.split(' ')
-        pool = Pool()
-        tokenized = pool.map(_lower, splitted)
+        #pool = Pool()
+        #tokenized = pool.map(_lower, splitted)
+        tokenized = list(map(_lower, splitted))
+        print("Tokenisation completed...")
         return tokenized
 
     #TODO: add min_count, together with n_words to determine if UNK is needed

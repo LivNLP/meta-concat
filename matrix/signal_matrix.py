@@ -58,11 +58,11 @@ class SignalMatrix():
         diff = matrix_1 - matrix_2
         self.noise = np.std(diff) * 0.5
 
-    def export_estimates(self):
+    def export_estimates(self, alpha):
         with open("{}/estimates.yml".format(self._param_dir), "w") as f:
             f.write("lambda: {}\n".format("sv.pkl"))
             f.write("sigma: {}\n".format(self.noise))
-            f.write("alpha: {}\n".format(0.5)) #symmetric factorization
+            f.write("alpha: {}\n".format(alpha)) # set alpha = 0.5 for symmetric factorization
 
 
     def construct_matrix(self):
