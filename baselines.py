@@ -172,13 +172,13 @@ def process():
     #df = concat_baseline(df, sources, vocab)
 
     # avg baseline
-    #df = avg_baseline(df, sources, vocab)
+    df = avg_baseline(df, sources, vocab)
 
     ## Globally Linear meta-embedding
     #for d in [100, 200, 300, 400, 500, 600, 700, 800]:
     #    for lr in [0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000]:
     #        df = globally_linear_me(sources, vocab, df, d, lr)
-    df = globally_linear_me(sources, vocab, df, 300, 0.01)
+    #df = globally_linear_me(sources, vocab, df, 300, 0.01)
 
     # evaluate LLE
     #fnames = glob.glob("../LLE-MetaEmbed/work/meta-embeds/*")
