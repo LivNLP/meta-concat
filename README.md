@@ -28,5 +28,3 @@ then use the baselines.py as follows.
 ```
     python baselines.py
 ```
-
-
