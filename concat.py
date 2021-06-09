@@ -21,7 +21,7 @@ from tabulate import tabulate
 import numpy
 
 import sys
-PATH_TO_REPSEVAL = "../repseval/src"
+PATH_TO_REPSEVAL = "../repseval/"
 sys.path.insert(0, PATH_TO_REPSEVAL)
 from evaluate import evaluate_embed_matrix
 from wordreps import WordReps
@@ -384,7 +384,7 @@ def evaluate_multiple_embeddings():
 
 
 if __name__ == "__main__":
-    #process()
-    evaluate_multiple_embeddings()
+    process()
+    #evaluate_multiple_embeddings()
     #batch_process()
     #pairwise_evaluation()
